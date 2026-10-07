@@ -6,16 +6,21 @@ import { useRouter } from "next/navigation";
 import { UserPhoto } from "@/components/brand/avatar";
 import { LogoMark, SignOutIcon, UserIcon } from "@/components/brand/icons";
 import { RoleChip } from "@/components/brand/role-chip";
-import { ROLE } from "@/lib/brand";
 import { homePath } from "@/lib/permissions";
 import { mute } from "@/lib/styles";
+import { useDispatch } from "react-redux";
 import { useVault } from "@/lib/store";
+import { useLogoutMutation } from "@/store/Reducer/auth-api";
+import { logout as clearSession } from "@/store/slice/userSlice";
+import { resetStore } from "@/store/store";
 import { NotificationBell } from "@/modules/notifications/components/notification-bell";
 import { Subnav } from "@/modules/shell/components/subnav";
 import { ThemeToggle } from "@/modules/theme/components/theme-toggle";
 
 export function AppHeader() {
   const { me, logout } = useVault();
+  const dispatch = useDispatch();
+  const [signOut] = useLogoutMutation();
   const router = useRouter();
   const [menu, setMenu] = useState<"profile" | "bell" | null>(null);
   const profileOpen = menu === "profile";
@@ -79,9 +84,6 @@ export function AppHeader() {
                 <div className="mx-2 mb-2">
                   <RoleChip role={me.role} />
                 </div>
-                <p className={`mx-2 mb-2 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs ${mute} dark:border-ink-700 dark:bg-ink-950/60`}>
-                  {ROLE[me.role].note}
-                </p>
                 <div className="my-1 border-t border-[#eaeef2] dark:border-ink-700" />
                 <Link
                   href="/profile"
@@ -94,8 +96,15 @@ export function AppHeader() {
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                  onClick={() => {
+                  onClick={async () => {
                     setMenu(null);
+                    try {
+                      await signOut().unwrap();
+                    } catch {
+                      /* the local session still ends if the server token is already gone */
+                    }
+                    dispatch(clearSession());
+                    dispatch(resetStore());
                     logout();
                     router.replace("/");
                   }}

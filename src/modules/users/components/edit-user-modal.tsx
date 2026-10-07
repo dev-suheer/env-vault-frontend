@@ -1,18 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import { Modal } from "@/components/brand/modal";
-import { SelectMenu } from "@/components/brand/select-menu";
+import { Field, Form } from "@/components/hook-form";
 import { ROLE } from "@/lib/brand";
 import { input, mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
-import type { Role, User } from "@/lib/types";
+import type { AuthUser } from "@/store/Reducer/auth-api";
+import { useUpdateUserMutation } from "@/store/Reducer/users-api";
+import { getErrorMessage } from "@/utils/api";
+import { showError, showSuccess } from "@/utils/toast";
 
-const roleLabel = { pm: "Project Manager", dev: "Dev" } as const;
-const roleValue = { "Project Manager": "pm", Dev: "dev" } as const;
-const statusLabel = { active: "Active", inactive: "Inactive" } as const;
+const schema = z.object({
+  name: z.string().trim().min(1, { error: "Name is required." }).max(60, { error: "Use 60 characters or fewer." }),
+  role: z.enum(["pm", "dev"], { error: "Choose a role." }),
+  status: z.enum(["active", "inactive"], { error: "Choose a status." }),
+});
 
-export function EditUserModal({ user, onClose }: { user: User | null; onClose: () => void }) {
+type UserValues = z.infer<typeof schema>;
+
+export function EditUserModal({ user, onClose }: { user: AuthUser | null; onClose: () => void }) {
   return (
     <Modal open={user !== null} onClose={onClose}>
       {user ? <UserForm key={user.email} user={user} onClose={onClose} /> : null}
@@ -20,66 +29,88 @@ export function EditUserModal({ user, onClose }: { user: User | null; onClose: (
   );
 }
 
-function UserForm({ user, onClose }: { user: User; onClose: () => void }) {
-  const { me, updateUser, toast } = useVault();
+function UserForm({ user, onClose }: { user: AuthUser; onClose: () => void }) {
+  const { me } = useVault();
+  const [updateUser] = useUpdateUserMutation();
   const self = me?.email === user.email;
-  const [name, setName] = useState(user.name);
-  const [role, setRole] = useState<Role>(user.role === "admin" ? "admin" : user.role);
-  const [active, setActive] = useState(user.active !== false);
+  const locked = self || user.role === "admin";
+  const methods = useForm<UserValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: user.name,
+      role: user.role === "pm" ? "pm" : "dev",
+      status: user.status ? "active" : "inactive",
+    },
+  });
+
+  const onSubmit = methods.handleSubmit(async (data) => {
+    try {
+      await updateUser({
+        id: user.id,
+        name: data.name,
+        role: locked ? user.role : data.role,
+        status: self ? true : data.status === "active",
+      }).unwrap();
+      onClose();
+      showSuccess("User updated");
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  });
 
   return (
-    <form
-      className="fade surface rounded-2xl border border-transparent bg-white p-6 shadow-xl dark:border-ink-700 dark:bg-ink-900"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const message = updateUser(user.email, { name, role, active });
-        if (message) {
-          toast(message);
-          return;
-        }
-        onClose();
-        toast("User updated");
-      }}
-    >
+    <Form methods={methods} onSubmit={onSubmit} className="fade surface rounded-2xl border border-transparent bg-white p-6 shadow-xl dark:border-ink-700 dark:bg-ink-900">
       <h3 className="text-lg font-bold">Edit user</h3>
       <p className={`mt-1 text-sm ${mute}`}>{user.email}</p>
-      <label className="mt-4 block text-sm font-medium">
-        Name
-        <input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} className={`mt-1 ${input}`} />
-      </label>
-      <div className="mt-4 text-sm font-medium">
-        Role
-        {self || user.role === "admin" ? (
-          <input value={ROLE[user.role].label} disabled className={`mt-1 ${input} cursor-not-allowed bg-canvas text-mute dark:bg-ink-950`} />
+      <div className="mt-4">
+        <Field.Text name="name" label="Name" maxLength={60} />
+        {locked ? (
+          <label className="mt-4 block text-sm font-medium">
+            Role
+            <input value={ROLE[user.role].label} disabled className={`mt-1 ${input} cursor-not-allowed bg-canvas text-mute dark:bg-ink-950`} />
+          </label>
         ) : (
-          <SelectMenu
+          <Field.Select
+            name="role"
             label="Role"
-            value={roleLabel[role === "admin" ? "dev" : role]}
-            options={["Project Manager", "Dev"] as const}
-            onChange={(next) => setRole(roleValue[next])}
+            options={[
+              { value: "pm", label: "Project Manager" },
+              { value: "dev", label: "Dev" },
+            ]}
           />
         )}
-      </div>
-      <div className="mt-4 text-sm font-medium">
-        Status
         {self ? (
-          <input value="Active" disabled className={`mt-1 ${input} cursor-not-allowed bg-canvas text-mute dark:bg-ink-950`} />
+          <label className="mt-4 block text-sm font-medium">
+            Status
+            <input value={user.status ? "Active" : "Inactive"} disabled className={`mt-1 ${input} cursor-not-allowed bg-canvas text-mute dark:bg-ink-950`} />
+          </label>
         ) : (
-          <SelectMenu
+          <Field.Select
+            name="status"
             label="Status"
-            value={statusLabel[active ? "active" : "inactive"]}
-            options={["Active", "Inactive"] as const}
-            onChange={(next) => setActive(next === "Active")}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
           />
         )}
       </div>
-      {self ? <p className={`mt-3 text-xs ${mute}`}>Your own role and status stay locked. There is only one admin.</p> : <p className={`mt-3 text-xs ${mute}`}>Roles are Project Manager or Dev. Admin stays a single account.</p>}
+      <p className={`mt-3 text-xs ${mute}`}>
+        {self
+          ? "Your own role and status stay locked. There is only one admin."
+          : "Roles are Project Manager or Dev. Admin stays a single account."}
+      </p>
       <div className="mt-6 flex justify-end gap-2 text-sm">
         <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 font-medium hover:bg-[#eff2f5] dark:hover:bg-ink-800">
           Cancel
         </button>
-        <button className="btn-p rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700">Save changes</button>
+        <button
+          disabled={methods.formState.isSubmitting}
+          className="btn-p rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {methods.formState.isSubmitting ? "Saving…" : "Save changes"}
+        </button>
       </div>
-    </form>
+    </Form>
   );
 }

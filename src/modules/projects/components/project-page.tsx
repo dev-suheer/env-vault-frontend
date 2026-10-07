@@ -6,34 +6,59 @@ import { Crumbs } from "@/components/brand/crumbs";
 import { ConfirmDialog } from "@/components/brand/confirm-dialog";
 import { PencilIcon, PlusIcon } from "@/components/brand/icons";
 import { EmptyState } from "@/components/brand/empty-state";
-import { canCreateIn, inWs, manages } from "@/lib/permissions";
+import { CardGridSkeleton, Skeleton } from "@/components/brand/skeleton";
+import { canCreateIn } from "@/lib/permissions";
 import { usePageTitle } from "@/lib/title";
 import { danger, mute, primary } from "@/lib/styles";
 import { useVault } from "@/lib/store";
 import { EnvCard } from "@/modules/envs/components/env-card";
 import { NewEnvModal } from "@/modules/envs/components/new-env-modal";
 import { NewProjectModal } from "@/modules/projects/components/new-project-modal";
+import { canEditEnv, useListProjectEnvsQuery } from "@/store/Reducer/envs-api";
+import { useDeleteProjectMutation } from "@/store/Reducer/projects-api";
+import { asVaultWorkspace, canManageWorkspace } from "@/store/Reducer/workspaces-api";
+import { getErrorMessage } from "@/utils/api";
+import { showError, showSuccess } from "@/utils/toast";
 
 export function ProjectPage() {
   const params = useParams<{ workspaceId: string; projectId: string }>();
   const router = useRouter();
-  const { ready, db, me, deleteProject, toast } = useVault();
+  const { me } = useVault();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const workspace = db.workspaces.find((item) => item.id === params.workspaceId);
-  const project = db.projects.find((item) => item.id === params.projectId && item.ws === params.workspaceId);
+  const [removeProject, { isLoading: deleting }] = useDeleteProjectMutation();
+  const { data: envPage, isLoading, isError, error } = useListProjectEnvsQuery(
+    { projectId: params.projectId, page: 1, limit: 50 },
+    { skip: !params.projectId },
+  );
+  const workspace = envPage?.workspace;
+  const project = envPage?.project;
   usePageTitle(project?.name);
 
   useEffect(() => {
-    if (!ready || !me) return;
-    if (!workspace || !inWs(me, workspace) || !project) router.replace(workspace ? `/workspaces/${workspace.id}` : "/workspaces");
-  }, [ready, me, workspace, project, router]);
+    if (!isError) return;
+    showError(getErrorMessage(error));
+    router.replace(params.workspaceId ? `/workspaces/${params.workspaceId}` : "/workspaces");
+  }, [isError, error, router, params.workspaceId]);
 
-  if (!me || !workspace || !project || !inWs(me, workspace)) return null;
+  if (!me) return null;
+  if (isLoading || !workspace || !project) return <ProjectSkeleton />;
 
-  const envs = db.envs.filter((env) => env.project === project.id).sort((a, b) => b.updated - a.updated);
-  const canManage = manages(me, workspace);
+  const envs = envPage?.data ?? [];
+  const canManage = canManageWorkspace(me, workspace);
+  const vaultWorkspace = asVaultWorkspace(workspace);
+
+  async function onDelete() {
+    try {
+      await removeProject({ id: project!.id, workspaceId: workspace!.id }).unwrap();
+      setConfirmDelete(false);
+      showSuccess("Project deleted");
+      router.push(`/workspaces/${workspace!.id}`);
+    } catch (err) {
+      showError(getErrorMessage(err));
+    }
+  }
 
   return (
     <div className="fade">
@@ -62,7 +87,7 @@ export function ProjectPage() {
           <p className={`mt-1 text-sm break-words ${mute}`}>{project.desc || "No description"}</p>
         </div>
         <div className="flex w-full flex-wrap gap-2 text-sm font-medium sm:w-auto">
-          {canCreateIn(me, workspace) ? (
+          {canCreateIn(me, vaultWorkspace) ? (
             <button type="button" className={`${primary} flex-1 sm:flex-none`} onClick={() => setOpen(true)}>
               <PlusIcon />
               New env
@@ -78,30 +103,38 @@ export function ProjectPage() {
       {envs.length ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {envs.map((env) => (
-            <EnvCard key={env.id} env={env} showOwner />
+            <EnvCard key={env.id} env={env} showOwner canEdit={canEditEnv(me, env, workspace)} />
           ))}
         </div>
       ) : (
-        <EmptyState
-          title="No envs in this project yet"
-          text={canCreateIn(me, workspace) ? "Add the first env for this project." : "Nothing here yet."}
-        />
+        <EmptyState title="No envs in this project yet" text={canCreateIn(me, vaultWorkspace) ? "Add the first env for this project." : "Nothing here yet."} />
       )}
       <NewEnvModal open={open} onClose={() => setOpen(false)} projectId={project.id} />
-      <NewProjectModal open={editing} onClose={() => setEditing(false)} workspaceId={workspace.id} project={project} />
+      <NewProjectModal open={editing} onClose={() => setEditing(false)} workspaceId={workspace.id} workspaceName={workspace.name} project={project} />
       <ConfirmDialog
         open={confirmDelete}
         title="Delete project"
-        body={`Delete "${project.name}" and all ${envs.length} env(s) in it? This cannot be undone.`}
-        confirmLabel="Delete project"
+        body={`Delete "${project.name}"? The project and its env files stay in the database and disappear from the app.`}
+        confirmLabel={deleting ? "Deleting…" : "Delete project"}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          if (!deleteProject(project.id)) return;
-          setConfirmDelete(false);
-          router.push(`/workspaces/${workspace.id}`);
-          toast("Project deleted");
-        }}
+        onConfirm={onDelete}
       />
+    </div>
+  );
+}
+
+function ProjectSkeleton() {
+  return (
+    <div className="fade" aria-busy="true" aria-label="Loading project">
+      <Skeleton className="h-4 w-56" />
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-8 w-48 max-w-full" />
+          <Skeleton className="mt-3 h-4 w-64 max-w-full" />
+        </div>
+        <Skeleton className="h-10 w-28 shrink-0" />
+      </div>
+      <CardGridSkeleton />
     </div>
   );
 }

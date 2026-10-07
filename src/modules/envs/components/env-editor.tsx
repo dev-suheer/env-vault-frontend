@@ -6,8 +6,8 @@ import { Crumbs } from "@/components/brand/crumbs";
 import { ConfirmDialog } from "@/components/brand/confirm-dialog";
 import { EyeIcon, PencilIcon } from "@/components/brand/icons";
 import { EnvChip } from "@/components/brand/env-chip";
-import { dispName } from "@/lib/format";
-import { canEdit, canView, homePath } from "@/lib/permissions";
+import { Skeleton } from "@/components/brand/skeleton";
+import { homePath } from "@/lib/permissions";
 import { usePageTitle } from "@/lib/title";
 import { btn, card, danger, input, mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
@@ -15,41 +15,67 @@ import { copyText, downloadEnv, parseEnv, toEnv } from "@/modules/envs/lib/env-f
 import { ImportPanel } from "@/modules/envs/components/import-panel";
 import { NewEnvModal } from "@/modules/envs/components/new-env-modal";
 import { VariableRow } from "@/modules/envs/components/variable-row";
+import {
+  canEditEnv,
+  useDeleteEnvMutation,
+  useGetEnvQuery,
+  useImportVariablesMutation,
+  useRemoveVariableMutation,
+  useUpsertVariableMutation,
+} from "@/store/Reducer/envs-api";
+import { getErrorMessage } from "@/utils/api";
+import { showError, showSuccess } from "@/utils/toast";
 
 export function EnvEditor() {
   const params = useParams<{ envId: string }>();
   const router = useRouter();
-  const { ready, db, me, toast, upsertVar, removeVar, importVars, deleteEnv } = useVault();
+  const { me } = useVault();
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const env = db.envs.find((item) => item.id === params.envId);
+  const { data: env, isLoading, isError, error } = useGetEnvQuery(params.envId);
+  const workspace = env?.workspace ?? null;
+  const project = env?.project ?? null;
+  const [leaving, setLeaving] = useState(false);
+  const [upsertVariable] = useUpsertVariableMutation();
+  const [removeVariable] = useRemoveVariableMutation();
+  const [importVariables] = useImportVariablesMutation();
+  const [deleteEnv, { isLoading: deleting }] = useDeleteEnvMutation();
   usePageTitle(env?.name);
-  const project = env?.project ? db.projects.find((item) => item.id === env.project) : null;
-  const workspace = env?.ws ? db.workspaces.find((item) => item.id === env.ws) : null;
 
   useEffect(() => {
-    if (!ready || !me) return;
-    if (!env || !canView(me, env, db)) {
-      router.replace(env?.ws ? "/workspaces" : homePath(me.role));
-    }
-  }, [ready, me, env, db, router]);
+    if (!isError || !me || leaving) return;
+    showError(getErrorMessage(error));
+    router.replace(homePath(me.role));
+  }, [isError, error, me, router, leaving]);
 
-  if (!me || !env || !canView(me, env, db)) return null;
+  if (!me) return null;
+  if (isLoading || !env) return <EnvSkeleton />;
 
-  const edit = canEdit(me, env, db);
-  const ownerName = dispName(db.users, env.owner);
+  const edit = canEditEnv(me, env, workspace);
+  const parentHref = project && workspace ? `/workspaces/${workspace.id}/projects/${project.id}` : "/envs";
 
   async function copy(text: string, message: string) {
     try {
       await copyText(text);
-      toast(message);
+      showSuccess(message);
     } catch {
-      toast("Copy failed. Allow clipboard access.");
+      showError("Copy failed. Allow clipboard access.");
     }
   }
 
-  const parentHref = project && workspace ? `/workspaces/${workspace.id}/projects/${project.id}` : "/envs";
+  async function onDelete() {
+    setLeaving(true);
+    try {
+      await deleteEnv({ id: env!.id, projectId: env!.projectId }).unwrap();
+      setConfirmDelete(false);
+      showSuccess("Env deleted");
+      router.replace(parentHref);
+    } catch (err) {
+      setLeaving(false);
+      showError(getErrorMessage(err));
+    }
+  }
 
   return (
     <div className="fade">
@@ -86,21 +112,17 @@ export function EnvEditor() {
           <div className={`mt-2 flex flex-wrap items-center gap-2 text-sm ${mute}`}>
             <EnvChip env={env.env} />
             {env.desc ? <span className="break-words">{env.desc}</span> : null}
-            <span>· by {ownerName}</span>
+            <span>· by {env.ownerName}</span>
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 text-sm font-medium sm:w-auto">
-          <button type="button" className={`${btn} flex-1 sm:flex-none`} onClick={() => (env.vars.length ? copy(toEnv(env.vars), ".env copied") : toast("Nothing to copy yet"))}>
+          <button type="button" className={`${btn} flex-1 sm:flex-none`} onClick={() => (env.vars.length ? copy(toEnv(env.vars), ".env copied") : showError("Nothing to copy yet"))}>
             Copy as .env
           </button>
           <button
             type="button"
             className={`${btn} flex-1 sm:flex-none`}
-            onClick={async () => {
-              const result = await downloadEnv(toEnv(env.vars));
-              if (result === "cancelled") return;
-              if (result !== "saved" && result !== "downloaded") toast("Download failed.");
-            }}
+            onClick={() => downloadEnv(toEnv(env.vars))}
           >
             Download .env
           </button>
@@ -154,17 +176,18 @@ export function EnvEditor() {
                     });
                   }}
                   onCopy={() => copy(item.v, "Value copied")}
-                  onRemove={() => {
-                    if (!removeVar(env.id, item.k)) {
-                      toast("You can only view this env");
-                      return;
+                  onRemove={async () => {
+                    try {
+                      await removeVariable({ id: env.id, key: item.k }).unwrap();
+                      setRevealed((current) => {
+                        const next = new Set(current);
+                        next.delete(item.k);
+                        return next;
+                      });
+                      showSuccess("Variable removed");
+                    } catch (err) {
+                      showError(getErrorMessage(err));
                     }
-                    setRevealed((current) => {
-                      const next = new Set(current);
-                      next.delete(item.k);
-                      return next;
-                    });
-                    toast("Variable removed");
                   }}
                 />
               ))
@@ -175,20 +198,22 @@ export function EnvEditor() {
           {edit ? (
             <form
               className="mt-auto flex flex-col gap-2 rounded-b-xl border-t border-line bg-canvas p-4 sm:flex-row sm:items-center dark:border-ink-700 dark:bg-ink-950/60"
-              onSubmit={(event) => {
+              onSubmit={async (event) => {
                 event.preventDefault();
                 const data = new FormData(event.currentTarget);
                 const key = String(data.get("key") ?? "").trim();
                 const value = String(data.get("value") ?? "");
-                if (!upsertVar(env.id, key, value)) {
-                  toast("You can only view this env");
+                if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+                  showError("Use letters, numbers, and underscores for the key.");
                   return;
                 }
-                const form = event.currentTarget;
-                form.reset();
-                const field = form.querySelector("input");
-                if (field instanceof HTMLInputElement) field.focus();
-                toast("Variable saved");
+                try {
+                  await upsertVariable({ id: env.id, k: key, v: value }).unwrap();
+                  event.currentTarget.reset();
+                  showSuccess("Variable saved");
+                } catch (err) {
+                  showError(getErrorMessage(err));
+                }
               }}
             >
               <input
@@ -206,40 +231,62 @@ export function EnvEditor() {
         </div>
         {edit ? (
           <ImportPanel
-            onImport={(text) => {
+            onImport={async (text) => {
               const pairs = parseEnv(text);
               if (!pairs.length) {
-                toast("No KEY=value lines found");
+                showError("No KEY=value lines found");
                 return false;
               }
-              if (!importVars(env.id, pairs)) {
-                toast("You can only view this env");
+              try {
+                await importVariables({ id: env.id, pairs }).unwrap();
+                showSuccess(`${pairs.length} variable${pairs.length > 1 ? "s" : ""} imported`);
+                return true;
+              } catch (err) {
+                showError(getErrorMessage(err));
                 return false;
               }
-              toast(`${pairs.length} variable${pairs.length > 1 ? "s" : ""} imported`);
-              return true;
             }}
           />
         ) : null}
       </div>
-      {edit ? <NewEnvModal open={editing} onClose={() => setEditing(false)} projectId={env.project} existing={env} /> : null}
+      {edit ? <NewEnvModal open={editing} onClose={() => setEditing(false)} projectId={env.projectId} existing={env} /> : null}
       <ConfirmDialog
         open={confirmDelete}
         title="Delete env"
-        body={`Delete "${env.name}" and all its variables? This cannot be undone.`}
-        confirmLabel="Delete env"
+        body={`Delete "${env.name}" and all its variables? The record stays in the database and disappears from the app.`}
+        confirmLabel={deleting ? "Deleting…" : "Delete env"}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          if (!deleteEnv(env.id)) {
-            toast("You can only view this env");
-            setConfirmDelete(false);
-            return;
-          }
-          setConfirmDelete(false);
-          router.push(parentHref);
-          toast("Env deleted");
-        }}
+        onConfirm={onDelete}
       />
+    </div>
+  );
+}
+
+function EnvSkeleton() {
+  return (
+    <div className="fade" aria-busy="true" aria-label="Loading env">
+      <Skeleton className="h-4 w-72 max-w-full" />
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-8 w-48 max-w-full" />
+          <Skeleton className="mt-3 h-4 w-56 max-w-full" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-10 w-28" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+      </div>
+      <div className={`${card} mt-6 overflow-hidden`}>
+        <div className="border-b border-line px-5 py-4 dark:border-ink-700">
+          <Skeleton className="h-4 w-28" />
+        </div>
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="flex items-center justify-between gap-4 border-b border-line px-5 py-4 last:border-b-0 dark:border-ink-700">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

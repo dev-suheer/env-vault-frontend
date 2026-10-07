@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { LogoMark } from "@/components/brand/icons";
-import { mute } from "@/lib/styles";
 import { ThemeToggle } from "@/modules/theme/components/theme-toggle";
 
 export const authField =
@@ -13,12 +12,12 @@ export const authInput = `mt-1 ${authField}`;
 export function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <section className="grid min-h-dvh lg:grid-cols-2">
-      <div className="hidden flex-col justify-between bg-slate-900 p-12 text-white lg:flex dark:border-r dark:border-ink-700 dark:bg-ink-900">
+      <div className="hidden flex-col bg-slate-900 p-12 text-white lg:flex dark:border-r dark:border-ink-700 dark:bg-ink-900">
         <div className="flex items-center gap-2 text-lg font-bold">
           <LogoMark />
           EnvVault
         </div>
-        <div>
+        <div className="flex flex-1 flex-col justify-center">
           <h1 className="max-w-md text-4xl font-extrabold leading-tight">Your repo can be recloned. Your .env can&apos;t.</h1>
           <p className="mt-4 max-w-md text-slate-400">
             Project managers set up workspaces, devs join by invite, and everyone shares the same env files without pasting secrets in chat.
@@ -41,7 +40,6 @@ export function AuthFrame({ children }: { children: ReactNode }) {
             </p>
           </div>
         </div>
-        <p className="text-sm text-slate-500">Demo build. Everything is stored in this browser only.</p>
       </div>
 
       <div className="relative flex items-center justify-center overflow-y-auto p-6">
@@ -52,7 +50,6 @@ export function AuthFrame({ children }: { children: ReactNode }) {
             EnvVault
           </div>
           {children}
-          <p className={`mt-4 text-xs lg:hidden ${mute}`}>Demo build. Everything is stored in this browser only.</p>
         </div>
       </div>
     </section>

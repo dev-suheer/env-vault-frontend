@@ -11,6 +11,7 @@ export type ResetChallenge = {
   expires: number;
   verified: boolean;
   attempts: number;
+  resetToken: string | null;
 };
 
 let snapshot: ResetChallenge | null = null;
@@ -23,7 +24,7 @@ function parse(raw: string | null): ResetChallenge | null {
     const value = JSON.parse(raw) as ResetChallenge;
     if (!value || typeof value.email !== "string" || typeof value.code !== "string" || typeof value.expires !== "number") return null;
     if (value.expires < Date.now()) return null;
-    return value;
+    return { ...value, resetToken: typeof value.resetToken === "string" ? value.resetToken : null };
   } catch {
     return null;
   }
@@ -81,13 +82,13 @@ export function createResetCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-export function saveResetChallenge(email: string, code: string) {
-  publish({ email, code, expires: Date.now() + TTL, verified: false, attempts: 0 });
+export function saveResetChallenge(email: string, code: string, expires = Date.now() + TTL) {
+  publish({ email, code, expires, verified: false, attempts: 0, resetToken: null });
 }
 
-export function markResetVerified() {
+export function markResetVerified(resetToken: string | null = null) {
   if (!snapshot) return;
-  publish({ ...snapshot, verified: true });
+  publish({ ...snapshot, verified: true, resetToken });
 }
 
 export function noteResetAttempt() {

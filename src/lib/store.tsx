@@ -30,6 +30,7 @@ type VaultContextValue = {
   login: (email: string, password: string) => { error: string | null; role: User["role"] | null };
   signup: (input: SignupInput) => string | null;
   logout: () => void;
+  attachAccount: (account: { email: string; name: string; role: User["role"]; phone: string; image: string | null; status: boolean }) => void;
   updateProfile: (input: { name: string; phone: string; image: string | null }) => boolean;
   changePassword: (input: { current: string; next: string }) => string | null;
   requestReset: (email: string) => string | null;
@@ -308,6 +309,42 @@ export function Providers({ children }: { children: ReactNode }) {
       if (!ok) return "Could not save. Browser storage is unavailable.";
       clearResetChallenge();
       return null;
+    },
+    [commit],
+  );
+
+  const attachAccount = useCallback(
+    (account: { email: string; name: string; role: User["role"]; phone: string; image: string | null; status: boolean }) => {
+      try {
+        sessionStorage.setItem(SESSION_KEY, account.email);
+      } catch {
+        /* session still lives in memory for this tab */
+      }
+      commit((draft) => {
+        const existing = draft.users.find((item) => item.email === account.email);
+        if (!existing) {
+          draft.users.push({
+            email: account.email,
+            name: account.name,
+            role: account.role,
+            password: "",
+            phone: account.phone,
+            image: account.image,
+            active: account.status,
+            created: null,
+            lastLogin: null,
+            lastDevice: null,
+            logins: [],
+          });
+          return;
+        }
+        existing.name = account.name;
+        existing.role = account.role;
+        existing.phone = account.phone;
+        existing.image = account.image;
+        existing.active = account.status;
+      });
+      publish(liveDb(), account.email);
     },
     [commit],
   );
@@ -839,6 +876,7 @@ export function Providers({ children }: { children: ReactNode }) {
       login,
       signup,
       logout,
+      attachAccount,
       updateProfile,
       changePassword,
       requestReset,
@@ -873,6 +911,7 @@ export function Providers({ children }: { children: ReactNode }) {
       login,
       signup,
       logout,
+      attachAccount,
       updateProfile,
       changePassword,
       requestReset,

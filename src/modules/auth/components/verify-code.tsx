@@ -1,19 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Form } from "@/components/hook-form";
+import { mute } from "@/lib/styles";
+import { AuthFrame } from "@/modules/auth/components/auth-frame";
+import {
+  markResetVerified,
+  saveResetChallenge,
+  useResetChallenge,
+} from "@/modules/auth/lib/reset";
+import {
+  useForgotMutation,
+  useVerifyResetMutation,
+} from "@/store/Reducer/auth-api";
+import { getErrorMessage } from "@/utils/api";
+import { showError, showSuccess } from "@/utils/toast";
+import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mute } from "@/lib/styles";
-import { useVault } from "@/lib/store";
-import { AuthFrame } from "@/modules/auth/components/auth-frame";
-import { useResetChallenge } from "@/modules/auth/lib/reset";
+import { useEffect, useRef } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { z } from "zod";
+
+const schema = z.object({
+  code: z.string().regex(/^\d{6}$/, { error: "Enter the full 6-digit code." }),
+});
+
+type VerifyValues = z.infer<typeof schema>;
 
 export function VerifyCode() {
-  const { requestReset, verifyReset, toast } = useVault();
+  const [verifyReset] = useVerifyResetMutation();
+  const [forgot, { isLoading: resending }] = useForgotMutation();
+  
   const router = useRouter();
   const { ready, challenge } = useResetChallenge();
-  const [code, setCode] = useState("");
-  const [error, setError] = useState("");
+  const methods = useForm<VerifyValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { code: "" },
+  });
+  const code = useWatch({ control: methods.control, name: "code" });
 
   useEffect(() => {
     if (!ready) return;
@@ -21,44 +45,71 @@ export function VerifyCode() {
     else if (challenge.verified) router.replace("/forgot/reset");
   }, [ready, challenge, router]);
 
-  if (!ready || !challenge || challenge.verified) return <div className="min-h-dvh" />;
+  const onSubmit = methods.handleSubmit(async (data) => {
+    if (!challenge) return;
+    try {
+      const result = await verifyReset({
+        email: challenge.email,
+        code: data.code,
+      }).unwrap();
+      markResetVerified(result.resetToken);
+      router.push("/forgot/reset");
+    } catch (error) {
+      showError(getErrorMessage(error));
+    }
+  });
+
+  if (!ready || !challenge || challenge.verified)
+    return <div className="min-h-dvh" />;
 
   return (
     <AuthFrame>
       <h2 className="text-2xl font-bold">Verify code</h2>
-      <p className={`mt-1 text-sm ${mute}`}>Enter the 6-digit code for {challenge.email}.</p>
+      <p className={`mt-1 text-sm ${mute}`}>
+        Enter the 6-digit code for {challenge.email}.
+      </p>
       <div className="mt-4 rounded-lg border border-line bg-canvas px-3 py-3 text-sm dark:border-ink-700 dark:bg-ink-950">
-        <p className={mute}>This demo stays in the browser, so the code is shown here.</p>
-        <p className="mt-1 font-mono text-lg font-semibold tracking-[0.3em]">{challenge.code}</p>
+        <p className={mute}>
+          This demo stays in the browser, so the code is shown here.
+        </p>
+        <p className="mt-1 font-mono text-lg font-semibold tracking-[0.3em]">
+          {challenge.code}
+        </p>
       </div>
-      <form
-        className="mt-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const message = verifyReset(code);
-          if (message) {
-            setError(message);
-            return;
+      <Form methods={methods} onSubmit={onSubmit} className="mt-6">
+        <CodeBoxes
+          value={code}
+          onChange={(value) =>
+            methods.setValue("code", value, {
+              shouldValidate: methods.formState.isSubmitted,
+            })
           }
-          router.push("/forgot/reset");
-        }}
-      >
-        <CodeBoxes value={code} onChange={setCode} />
-        {error ? <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
-        <button type="submit" className="btn-p mt-6 w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">
-          Verify
+        />
+        {methods.formState.errors.code ? (
+          <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+            {methods.formState.errors.code.message}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={methods.formState.isSubmitting}
+          className="btn-p mt-6 w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          {methods.formState.isSubmitting ? "Checking…" : "Verify"}
         </button>
-      </form>
+      </Form>
       <button
         type="button"
         className="mt-4 text-sm font-semibold text-brand-700 dark:text-brand-500"
-        onClick={() => {
-          const message = requestReset(challenge.email);
-          setCode("");
-          if (message) setError(message);
-          else {
-            setError("");
-            toast("A new code is ready.");
+        disabled={resending}
+        onClick={async () => {
+          try {
+            const result = await forgot({ email: challenge.email }).unwrap();
+            saveResetChallenge(result.email, result.code, result.expiresAt);
+            methods.reset({ code: "" });
+            showSuccess("A new code is ready.");
+          } catch (err) {
+            showError(getErrorMessage(err));
           }
         }}
       >
@@ -71,7 +122,13 @@ export function VerifyCode() {
   );
 }
 
-function CodeBoxes({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function CodeBoxes({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length: 6 }, (_, index) => value[index] ?? "");
 
@@ -107,7 +164,8 @@ function CodeBoxes({ value, onChange }: { value: string; onChange: (value: strin
             if (nextDigit && index < 5) refs.current[index + 1]?.focus();
           }}
           onKeyDown={(event) => {
-            if (event.key === "Backspace" && !digits[index] && index > 0) refs.current[index - 1]?.focus();
+            if (event.key === "Backspace" && !digits[index] && index > 0)
+              refs.current[index - 1]?.focus();
           }}
         />
       ))}

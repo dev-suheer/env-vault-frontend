@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { btn, mute } from "@/lib/styles";
 
-export function ImportPanel({ onImport }: { onImport: (text: string) => boolean }) {
+export function ImportPanel({ onImport }: { onImport: (text: string) => boolean | Promise<boolean> }) {
   const bulkRef = useRef<HTMLTextAreaElement>(null);
   return (
     <div className="surface self-start rounded-xl border border-line bg-white p-5 lg:col-span-2 dark:border-ink-700 dark:bg-ink-900">
@@ -19,10 +19,10 @@ export function ImportPanel({ onImport }: { onImport: (text: string) => boolean 
         <button
           type="button"
           className="rounded-lg bg-slate-900 px-4 py-2.5 text-white hover:bg-slate-700 sm:py-2 dark:border dark:border-ink-650 dark:bg-ink-800 dark:hover:bg-ink-700"
-          onClick={() => {
+          onClick={async () => {
             const field = bulkRef.current;
             if (!field) return;
-            if (onImport(field.value)) field.value = "";
+            if (await onImport(field.value)) field.value = "";
           }}
         >
           Import variables

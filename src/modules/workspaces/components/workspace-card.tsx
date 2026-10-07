@@ -4,20 +4,19 @@ import { useState } from "react";
 import Link from "next/link";
 import { PencilIcon } from "@/components/brand/icons";
 import { RoleChip } from "@/components/brand/role-chip";
-import { dispName, plural } from "@/lib/format";
-import { manages } from "@/lib/permissions";
+import { plural } from "@/lib/format";
 import { mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
-import type { Workspace } from "@/lib/types";
 import { NewWorkspaceModal } from "@/modules/workspaces/components/new-workspace-modal";
+import { canManageWorkspace, type Workspace } from "@/store/Reducer/workspaces-api";
 
 export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
-  const { db, me } = useVault();
+  const { me } = useVault();
   const [editing, setEditing] = useState(false);
   if (!me) return null;
-  const mine = workspace.pm === me.email;
-  const canManage = manages(me, workspace);
-  const projects = db.projects.filter((project) => project.ws === workspace.id).length;
+  const mine = workspace.ownerEmail === me.email;
+  const canManage = canManageWorkspace(me, workspace);
+
   return (
     <>
       <Link
@@ -46,9 +45,9 @@ export function WorkspaceCard({ workspace }: { workspace: Workspace }) {
         </div>
         <p className={`mt-1 line-clamp-2 min-h-10 text-sm ${mute}`}>{workspace.desc || "No description"}</p>
         <div className="mt-4 flex items-center justify-between gap-2 text-xs text-[#8c959f] dark:text-ink-400">
-          <span className="truncate">PM: {dispName(db.users, workspace.pm)}</span>
+          <span className="truncate">PM: {workspace.ownerName}</span>
           <span className="shrink-0">
-            {plural(projects, "project")} · {plural(workspace.members.length, "dev")}
+            {plural(workspace.projectCount, "project")} · {plural(workspace.members.length, "dev")}
           </span>
         </div>
       </Link>

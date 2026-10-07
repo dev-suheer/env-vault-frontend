@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Manrope } from "next/font/google";
 import Script from "next/script";
 import { Providers } from "@/lib/store";
+import { StoreProvider } from "@/store/store";
 import { themeBootScript } from "@/modules/theme/lib/theme";
 import "./globals.css";
 
@@ -43,7 +44,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Script id="envvault-theme" strategy="beforeInteractive">
           {themeBootScript}
         </Script>
-        <Providers>{children}</Providers>
+        <StoreProvider>
+          <Providers>{children}</Providers>
+        </StoreProvider>
       </body>
     </html>
   );

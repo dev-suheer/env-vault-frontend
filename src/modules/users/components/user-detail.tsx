@@ -10,21 +10,18 @@ import { PencilIcon } from "@/components/brand/icons";
 import { RoleChip } from "@/components/brand/role-chip";
 import { SelectMenu } from "@/components/brand/select-menu";
 import { ROLE } from "@/lib/brand";
-import { ago, dispName, plural } from "@/lib/format";
+import { ago, plural } from "@/lib/format";
 import { card, mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
 import { LoginLineChart } from "@/modules/dashboard/components/charts";
 import { busiestLogin, loginPoints, type LoginRange } from "@/modules/users/lib/logins";
 import { EditUserModal } from "@/modules/users/components/edit-user-modal";
+import { useListUserEnvsQuery } from "@/store/Reducer/envs-api";
+import { useGetUserQuery, useListUserWorkspacesQuery } from "@/store/Reducer/users-api";
 
-function readEmail(value: string | string[] | undefined) {
+function readId(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (!raw) return "";
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
+  return raw ?? "";
 }
 
 function recorded(value: number | null, withTime: boolean) {
@@ -33,39 +30,37 @@ function recorded(value: number | null, withTime: boolean) {
 }
 
 export function UserDetailPage() {
-  const params = useParams<{ email: string }>();
+  const params = useParams<{ userId: string }>();
   const router = useRouter();
-  const { db, me } = useVault();
+  const { me } = useVault();
   const [editing, setEditing] = useState(false);
   const [range, setRange] = useState<LoginRange>("Week");
-  const email = readEmail(params.email).trim().toLowerCase();
-  const user = db.users.find((item) => item.email === email);
+  const userId = readId(params.userId);
+  const { data: user, isLoading } = useGetUserQuery(userId, { skip: !userId || me?.role !== "admin" });
+  const { data: workspacePage } = useListUserWorkspacesQuery({ userId, page: 1, limit: 50 }, { skip: !userId || me?.role !== "admin" });
+  const { data: envPage } = useListUserEnvsQuery({ userId, page: 1, limit: 20 }, { skip: !userId || me?.role !== "admin" });
 
   useEffect(() => {
-    if (me?.role === "admin" && (!user || user.role === "admin")) router.replace("/users");
-  }, [me, router, user]);
+    if (me?.role === "admin" && !isLoading && (!user || user.role === "admin")) router.replace("/users");
+  }, [me, router, user, isLoading]);
 
   if (!me || me.role !== "admin" || !user || user.role === "admin") return null;
 
-  const active = user.active !== false;
-  const owned = db.workspaces.filter((workspace) => workspace.pm === user.email);
-  const joined = db.workspaces.filter((workspace) => workspace.members.includes(user.email) && workspace.pm !== user.email);
-  const linked = [...owned, ...joined];
-  const memberRows = linked.map((workspace) => ({
-    id: workspace.id,
-    name: workspace.name,
-    members: workspace.members.length + 1,
-  }));
-  const memberTotal = memberRows.reduce((count, row) => count + row.members, 0);
-  const memberPeak = Math.max(1, ...memberRows.map((row) => row.members));
-  const envs = db.envs.filter((env) => env.owner === user.email).sort((a, b) => b.updated - a.updated);
-  const personal = envs.filter((env) => !env.ws);
-  const shared = envs.filter((env) => env.ws);
-  const audits = (db.audits ?? []).filter((entry) => entry.by === user.email).sort((a, b) => b.at - a.at);
+  const linked = workspacePage?.data ?? [];
+  const envs = envPage?.data ?? [];
+  const personal = envs.filter((env) => !env.workspaceId);
+  const shared = envs.filter((env) => env.workspaceId);
   const days = loginPoints(user.logins, range);
   const busiest = busiestLogin(days);
   const signIns = days.reduce((count, day) => count + day.value, 0);
   const windowLabel = range === "Week" ? "7 days" : range === "Month" ? "30 days" : "12 months";
+  const memberRows = linked.map((workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    members: workspace.members,
+  }));
+  const memberTotal = memberRows.reduce((count, row) => count + row.members, 0);
+  const memberPeak = Math.max(1, ...memberRows.map((row) => row.members));
 
   const facts = [
     { label: "Signed up", value: recorded(user.created, false) },
@@ -86,12 +81,12 @@ export function UserDetailPage() {
               <RoleChip role={user.role} />
               <span
                 className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
-                  active
+                  user.status
                     ? "border-brand-100 bg-brand-50 text-brand-700 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-emerald-300"
                     : "border-line bg-canvas text-mute dark:border-ink-700 dark:bg-ink-950 dark:text-ink-400"
                 }`}
               >
-                {active ? "Active" : "Inactive"}
+                {user.status ? "Active" : "Inactive"}
               </span>
             </div>
             <p className={`mt-1 truncate text-sm ${mute}`}>{user.email}</p>
@@ -124,14 +119,12 @@ export function UserDetailPage() {
               <h2 className="text-sm font-bold">Linked workspaces</h2>
               <p className={`mt-1 text-xs ${mute}`}>Workspaces this account owns or has joined.</p>
             </div>
-            <span className="rounded-md border border-line bg-canvas px-2 py-1 text-xs font-bold dark:border-ink-700 dark:bg-ink-950">{linked.length}</span>
+            <span className="rounded-md border border-line bg-canvas px-2 py-1 text-xs font-bold dark:border-ink-700 dark:bg-ink-950">{workspacePage?.totalRecords ?? linked.length}</span>
           </div>
           {linked.length ? (
             <ul className="mt-4 space-y-2">
               {linked.map((workspace) => {
-                const access = workspace.pm === user.email ? "Project manager" : workspace.editors?.includes(user.email) ? "Edit" : "View";
-                const projectCount = db.projects.filter((project) => project.ws === workspace.id).length;
-                const envCount = db.envs.filter((env) => env.ws === workspace.id).length;
+                const access = workspace.access === "owner" ? "Project manager" : workspace.access === "edit" ? "Edit" : "View";
                 return (
                   <li key={workspace.id}>
                     <Link
@@ -140,17 +133,9 @@ export function UserDetailPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">{workspace.name}</p>
-                        <p className={`mt-0.5 truncate text-xs ${mute}`}>
-                          {plural(projectCount, "project")} · {plural(envCount, "env")}
-                        </p>
+                        <p className={`mt-0.5 truncate text-xs ${mute}`}>{plural(workspace.members, "member")}</p>
                       </div>
-                      <span
-                        className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
-                          access === "Edit"
-                            ? "border-brand-100 bg-brand-50 text-brand-700 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-emerald-300"
-                            : "border-line bg-canvas text-mute dark:border-ink-700 dark:bg-ink-950 dark:text-ink-400"
-                        }`}
-                      >
+                      <span className="shrink-0 rounded-md border border-line bg-canvas px-2 py-0.5 text-[11px] font-semibold text-mute dark:border-ink-700 dark:bg-ink-950 dark:text-ink-400">
                         {access}
                       </span>
                     </Link>
@@ -169,7 +154,7 @@ export function UserDetailPage() {
               <h2 className="text-sm font-bold">Env files</h2>
               <p className={`mt-1 text-xs ${mute}`}>Files this account created.</p>
             </div>
-            <span className="rounded-md border border-line bg-canvas px-2 py-1 text-xs font-bold dark:border-ink-700 dark:bg-ink-950">{envs.length}</span>
+            <span className="rounded-md border border-line bg-canvas px-2 py-1 text-xs font-bold dark:border-ink-700 dark:bg-ink-950">{envPage?.totalRecords ?? envs.length}</span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <div className="rounded-lg bg-canvas px-3 py-3 dark:bg-ink-950">
@@ -183,29 +168,25 @@ export function UserDetailPage() {
           </div>
           {envs.length ? (
             <ul className="mt-4 space-y-2">
-              {envs.slice(0, 3).map((env) => {
-                const workspace = db.workspaces.find((item) => item.id === env.ws);
-                return (
-                  <li key={env.id}>
-                    <Link
-                      href={`/envs/${env.id}`}
-                      className="flex items-center gap-3 rounded-lg border border-line px-3 py-2.5 hover:border-brand-500 dark:border-ink-700 dark:hover:border-brand-500/70"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold">{env.name}</p>
-                        <p className={`mt-0.5 truncate text-xs ${mute}`}>{workspace ? workspace.name : "Personal"} · {plural(env.vars.length, "variable")}</p>
-                      </div>
-                      <EnvChip env={env.env} />
-                    </Link>
-                  </li>
-                );
-              })}
+              {envs.slice(0, 3).map((env) => (
+                <li key={env.id}>
+                  <Link href={`/envs/${env.id}`} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2.5 hover:border-brand-500 dark:border-ink-700 dark:hover:border-brand-500/70">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{env.name}</p>
+                      <p className={`mt-0.5 truncate text-xs ${mute}`}>
+                        {env.workspaceId ? "Shared" : "Personal"} · {plural(env.vars.length, "variable")}
+                      </p>
+                    </div>
+                    <EnvChip env={env.env} />
+                  </Link>
+                </li>
+              ))}
             </ul>
           ) : (
             <p className={`mt-4 text-sm ${mute}`}>No env files yet.</p>
           )}
-          {envs.length > 3 ? (
-            <Link href={`/users/${encodeURIComponent(user.email)}/envs`} className="mt-4 text-sm font-semibold text-brand-700 dark:text-brand-500">
+          {(envPage?.totalRecords ?? 0) > 3 ? (
+            <Link href={`/users/${user.id}/envs`} className="mt-4 text-sm font-semibold text-brand-700 dark:text-brand-500">
               View all
             </Link>
           ) : null}
@@ -257,63 +238,6 @@ export function UserDetailPage() {
           )}
         </section>
       </div>
-
-      <section className={`${card} mt-4 overflow-hidden`}>
-        <div className="border-b border-line px-5 py-4 dark:border-ink-700">
-          <h2 className="text-sm font-bold">Audit log</h2>
-          <p className={`mt-1 text-xs ${mute}`}>Every workspace change recorded for {dispName(db.users, user.email)}.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-line bg-canvas text-xs font-semibold tracking-wide text-mute dark:border-ink-700 dark:bg-ink-950 dark:text-ink-400">
-                {["When", "Workspace", "Action", "What", "Change"].map((column) => (
-                  <th key={column} scope="col" className="px-4 py-3 font-semibold whitespace-nowrap first:pl-5 last:pr-5">
-                    {column}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {audits.length ? (
-                audits.map((entry) => {
-                  const when = new Date(entry.at);
-                  const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(when);
-                  const workspace = db.workspaces.find((item) => item.id === entry.ws);
-                  return (
-                    <tr key={entry.id} className="border-b border-[#eaeef2] align-top last:border-0 hover:bg-[#f6f8fa] dark:border-ink-700 dark:hover:bg-ink-800/50">
-                      <td className="px-4 py-3 pl-5 whitespace-nowrap">
-                        <time dateTime={when.toISOString()} className="block">
-                          {stamp}
-                        </time>
-                        <span className={`mt-0.5 block text-xs ${mute}`}>{ago(entry.at)}</span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {workspace ? (
-                          <Link href={`/workspaces/${workspace.id}`} className="font-medium">
-                            {workspace.name}
-                          </Link>
-                        ) : (
-                          <span className={mute}>Removed workspace</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap">{entry.action}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{entry.subject}</td>
-                      <td className={`max-w-md px-4 py-3 pr-5 ${mute}`}>{entry.detail}</td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={5} className={`px-5 py-8 ${mute}`}>
-                    No changes recorded for this user yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <EditUserModal user={editing ? user : null} onClose={() => setEditing(false)} />
     </div>

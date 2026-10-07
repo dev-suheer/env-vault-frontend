@@ -4,18 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { LockIcon, PencilIcon } from "@/components/brand/icons";
 import { EnvChip } from "@/components/brand/env-chip";
-import { ago, dispName, plural } from "@/lib/format";
-import { canEdit } from "@/lib/permissions";
+import { ago, plural } from "@/lib/format";
 import { mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
-import type { EnvFile } from "@/lib/types";
 import { NewEnvModal } from "@/modules/envs/components/new-env-modal";
+import { canEditEnv, type EnvFile } from "@/store/Reducer/envs-api";
 
-export function EnvCard({ env, showOwner }: { env: EnvFile; showOwner: boolean }) {
-  const { db, me } = useVault();
+export function EnvCard({ env, showOwner, canEdit }: { env: EnvFile; showOwner: boolean; canEdit?: boolean }) {
+  const { me } = useVault();
   const [editing, setEditing] = useState(false);
   if (!me) return null;
-  const readOnly = !canEdit(me, env, db);
+  const readOnly = !(canEdit ?? canEditEnv(me, env, null));
   return (
     <>
       <Link
@@ -48,7 +47,7 @@ export function EnvCard({ env, showOwner }: { env: EnvFile; showOwner: boolean }
             {plural(env.vars.length, "variable")} · Updated {ago(env.updated)}
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            {showOwner ? <span className="max-w-24 truncate sm:max-w-none">by {dispName(db.users, env.owner)}</span> : null}
+            {showOwner ? <span className="max-w-24 truncate sm:max-w-none">by {env.ownerName}</span> : null}
             {readOnly ? (
               <span className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 dark:border-ink-700">
                 <LockIcon className="h-3 w-3" strokeWidth={2} />
@@ -58,17 +57,16 @@ export function EnvCard({ env, showOwner }: { env: EnvFile; showOwner: boolean }
           </span>
         </div>
       </Link>
-      {readOnly ? null : <NewEnvModal open={editing} onClose={() => setEditing(false)} projectId={env.project} existing={env} />}
+      {readOnly ? null : <NewEnvModal open={editing} onClose={() => setEditing(false)} projectId={env.projectId} existing={env} />}
     </>
   );
 }
 
-export function EnvGrid({ list, showOwner, query }: { list: EnvFile[]; showOwner: boolean; query: string }) {
-  const filtered = list.filter((env) => env.name.toLowerCase().includes(query.toLowerCase()));
-  if (!filtered.length) return <p className={`text-sm ${mute}`}>No envs match your search.</p>;
+export function EnvGrid({ list, showOwner }: { list: EnvFile[]; showOwner: boolean }) {
+  if (!list.length) return <p className={`text-sm ${mute}`}>No envs match your search.</p>;
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {filtered.map((env) => (
+      {list.map((env) => (
         <EnvCard key={env.id} env={env} showOwner={showOwner} />
       ))}
     </div>

@@ -1,15 +1,17 @@
 "use client";
 
-import { ago, dispName } from "@/lib/format";
+import { useState } from "react";
+import { ago } from "@/lib/format";
 import { card, mute } from "@/lib/styles";
-import { useVault } from "@/lib/store";
-import type { Workspace } from "@/lib/types";
+import { useListAuditQuery } from "@/store/Reducer/workspaces-api";
+import { getErrorMessage } from "@/utils/api";
 
 const columns = ["When", "Who", "Action", "What", "Change"] as const;
 
-export function AuditLog({ workspace }: { workspace: Workspace }) {
-  const { db } = useVault();
-  const entries = (db.audits ?? []).filter((entry) => entry.ws === workspace.id).sort((a, b) => b.at - a.at);
+export function AuditLog({ workspaceId }: { workspaceId: string }) {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isError, error } = useListAuditQuery({ workspaceId, page, limit: 20 });
+  const entries = data?.data ?? [];
 
   return (
     <div className={`${card} mt-6 overflow-hidden`}>
@@ -29,7 +31,19 @@ export function AuditLog({ workspace }: { workspace: Workspace }) {
             </tr>
           </thead>
           <tbody>
-            {entries.length ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={columns.length} className={`px-5 py-8 ${mute}`}>
+                  Loading audit log…
+                </td>
+              </tr>
+            ) : isError ? (
+              <tr>
+                <td colSpan={columns.length} className="px-5 py-8 text-rose-600 dark:text-rose-400">
+                  {getErrorMessage(error)}
+                </td>
+              </tr>
+            ) : entries.length ? (
               entries.map((entry) => {
                 const when = new Date(entry.at);
                 const stamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(when);
@@ -42,8 +56,8 @@ export function AuditLog({ workspace }: { workspace: Workspace }) {
                       <span className={`mt-0.5 block text-xs ${mute}`}>{ago(entry.at)}</span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="block font-medium">{dispName(db.users, entry.by)}</span>
-                      <span className={`mt-0.5 block text-xs ${mute}`}>{entry.by}</span>
+                      <span className="block font-medium">{entry.actorName}</span>
+                      <span className={`mt-0.5 block text-xs ${mute}`}>{entry.actorEmail}</span>
                     </td>
                     <td className="px-4 py-3 font-medium whitespace-nowrap">{entry.action}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{entry.subject}</td>
@@ -61,6 +75,24 @@ export function AuditLog({ workspace }: { workspace: Workspace }) {
           </tbody>
         </table>
       </div>
+      {data && data.totalPages > 1 ? (
+        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3 text-sm dark:border-ink-700">
+          <button type="button" className="rounded-lg px-3 py-1.5 font-medium disabled:opacity-40" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            Previous
+          </button>
+          <span className={mute}>
+            {page} / {data.totalPages}
+          </span>
+          <button
+            type="button"
+            className="rounded-lg px-3 py-1.5 font-medium disabled:opacity-40"
+            disabled={page >= data.totalPages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -3,16 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellIcon } from "@/components/brand/icons";
-import { ago, dispName } from "@/lib/format";
+import { ago } from "@/lib/format";
 import { mute } from "@/lib/styles";
 import { useVault } from "@/lib/store";
-import { bellCount, myNotifs } from "@/modules/notifications/lib/notifications";
+import { useListNotificationsQuery, useMarkNotificationsReadMutation, useRespondInviteMutation } from "@/store/Reducer/invites-api";
+import { getErrorMessage } from "@/utils/api";
+import { showError, showSuccess } from "@/utils/toast";
 
 export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { db, me, toast, respondInvite, markInfoRead } = useVault();
+  const { me } = useVault();
   const router = useRouter();
   const [fresh, setFresh] = useState<string[]>([]);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const { data } = useListNotificationsQuery({ page: 1, limit: 50 }, { skip: !me });
+  const [respondInvite] = useRespondInviteMutation();
+  const [markRead] = useMarkNotificationsReadMutation();
+  const notes = data?.data ?? [];
+  const count = notes.filter((note) => (note.kind === "invite" ? note.status === "pending" : !note.read)).length;
 
   useEffect(() => {
     if (!open) return;
@@ -32,16 +39,13 @@ export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpen
 
   if (!me) return null;
 
-  const notes = myNotifs(db.notifs, me.email);
-  const count = bellCount(db.notifs, me.email);
-
   function toggle() {
     if (open) {
       onOpenChange(false);
       return;
     }
     setFresh(notes.filter((note) => note.kind === "info" && !note.read).map((note) => note.id));
-    markInfoRead();
+    markRead();
     onOpenChange(true);
   }
 
@@ -68,25 +72,29 @@ export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpen
           <div className="max-h-96 overflow-y-auto">
             {notes.length ? (
               notes.map((note) => {
-                const workspaceName = db.workspaces.find((item) => note.kind === "invite" && item.id === note.ws)?.name || (note.kind === "invite" ? note.wsName : "a workspace");
+                const workspaceName = note.workspaceName || "a workspace";
                 if (note.kind === "invite" && note.status === "pending") {
                   return (
                     <div key={note.id} className="border-b border-[#eaeef2] px-4 py-3 last:border-0 dark:border-ink-700">
                       <p className="text-sm">
-                        <b>{dispName(db.users, note.from)}</b> invited you to join <b>{workspaceName}</b> with {note.access === "edit" ? "edit" : "view"} access
+                        <b>{note.fromEmail}</b> invited you to join <b>{workspaceName}</b> with {note.access === "edit" ? "edit" : "view"} access
                       </p>
                       <p className={`mt-0.5 text-xs ${mute}`}>{ago(note.at)}</p>
                       <div className="mt-2 flex gap-2 text-xs font-semibold">
                         <button
                           type="button"
                           className="btn-p rounded-md bg-brand-600 px-3 py-1.5 text-white hover:bg-brand-700"
-                          onClick={() => {
-                            const result = respondInvite(note.id, true);
-                            onOpenChange(false);
-                            if (result.status === "joined") {
-                              router.push(`/workspaces/${result.workspaceId}`);
-                              toast(`You joined ${result.name}`);
-                            } else if (result.status === "missing") toast("That workspace no longer exists");
+                          onClick={async () => {
+                            try {
+                              const result = await respondInvite({ id: note.id, accept: true }).unwrap();
+                              onOpenChange(false);
+                              if (result.status === "joined" && result.workspaceId) {
+                                router.push(`/workspaces/${result.workspaceId}`);
+                                showSuccess(`You joined ${result.name}`);
+                              } else if (result.status === "missing") showError("That workspace no longer exists");
+                            } catch (error) {
+                              showError(getErrorMessage(error));
+                            }
                           }}
                         >
                           Accept
@@ -94,11 +102,15 @@ export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpen
                         <button
                           type="button"
                           className="rounded-md border border-line px-3 py-1.5 hover:bg-[#eff2f5] dark:border-ink-650 dark:hover:bg-ink-800"
-                          onClick={() => {
-                            const result = respondInvite(note.id, false);
-                            onOpenChange(false);
-                            if (result.status === "missing") toast("That workspace no longer exists");
-                            else toast("Invite declined");
+                          onClick={async () => {
+                            try {
+                              const result = await respondInvite({ id: note.id, accept: false }).unwrap();
+                              onOpenChange(false);
+                              if (result.status === "missing") showError("That workspace no longer exists");
+                              else showSuccess("Invite declined");
+                            } catch (error) {
+                              showError(getErrorMessage(error));
+                            }
                           }}
                         >
                           Decline
@@ -107,12 +119,6 @@ export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpen
                     </div>
                   );
                 }
-                const text =
-                  note.kind === "invite"
-                    ? note.status === "accepted"
-                      ? `You joined ${workspaceName}`
-                      : `You declined the invite to ${workspaceName}`
-                    : note.text;
                 const unread = note.kind === "info" && fresh.includes(note.id);
                 return (
                   <div
@@ -131,7 +137,7 @@ export function NotificationBell({ open, onOpenChange }: { open: boolean; onOpen
                           </>
                         )
                       ) : (
-                        text
+                        note.text
                       )}
                     </p>
                     <p className={`mt-0.5 text-xs ${mute}`}>{ago(note.at)}</p>

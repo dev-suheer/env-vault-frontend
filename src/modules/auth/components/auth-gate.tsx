@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { homePath } from "@/lib/permissions";
 import { useVault } from "@/lib/store";
-import { LoginScreen } from "@/modules/auth/components/login-screen";
 
-export function AuthGate() {
+export function AuthGate({ children }: { children: ReactNode }) {
   const { ready, me } = useVault();
   const router = useRouter();
 
@@ -16,5 +15,5 @@ export function AuthGate() {
   }, [ready, me, router]);
 
   if (!ready || me) return <div className="min-h-dvh" />;
-  return <LoginScreen />;
+  return children;
 }
