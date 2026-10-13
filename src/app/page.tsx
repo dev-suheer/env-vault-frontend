@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
-import { AuthGate } from "@/modules/auth/components/auth-gate";
-import { LoginScreen } from "@/modules/auth/components/login-screen";
+import { LandingView } from "@/modules/landing/views/landing-view";
 
 export const metadata: Metadata = {
-  title: "Sign in",
+  title: "SecureEnv",
+  description:
+    "Project managers set up workspaces, developers join by invite, and everyone shares the same env files without pasting secrets in chat.",
 };
 
 export default function Home() {
-  return (
-    <AuthGate>
-      <LoginScreen />
-    </AuthGate>
-  );
+  return <LandingView />;
 }

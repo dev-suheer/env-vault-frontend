@@ -56,9 +56,24 @@ export function ProfilePassword() {
           <h2 className="text-sm font-bold">Change password</h2>
           <p className={`mt-1 text-xs ${mute}`}>Enter your current password, then choose a new one.</p>
           <div className="mt-5">
-            <Field.Password name="current" label="Current password" autoComplete="current-password" />
-            <Field.Password name="next" label="New password" autoComplete="new-password" />
-            <Field.Password name="confirm" label="Confirm new password" autoComplete="new-password" />
+            <Field.Password
+              name="current"
+              label="Current password"
+              autoComplete="current-password"
+              placeholder="Enter current password"
+            />
+            <Field.Password
+              name="next"
+              label="New password"
+              autoComplete="new-password"
+              placeholder="At least 6 characters"
+            />
+            <Field.Password
+              name="confirm"
+              label="Confirm new password"
+              autoComplete="new-password"
+              placeholder="Re-enter new password"
+            />
           </div>
         </section>
         <section>

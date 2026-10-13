@@ -100,6 +100,22 @@ export function EyeIcon({ className = "mt-0.5 h-4 w-4 shrink-0" }: IconProps) {
   );
 }
 
+export function MenuIcon({ className = "h-5 w-5" }: IconProps) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+export function CloseIcon({ className = "h-5 w-5" }: IconProps) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" viewBox="0 0 24 24" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function LogoMark({
   className = "h-8 w-8",
   iconClassName = "h-4 w-4",

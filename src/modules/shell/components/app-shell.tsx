@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useVault } from "@/lib/store";
 import { AppHeader } from "@/modules/shell/components/app-header";
+import { MainTransition } from "@/modules/shell/components/main-transition";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { ready, me, logout } = useVault();
@@ -14,7 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!ready) return;
     if (!me || me.active === false) {
       if (me?.active === false) logout();
-      router.replace("/");
+      router.replace("/login");
       return;
     }
     if (pathname === "/envs" && me.role !== "dev") router.replace("/workspaces");
@@ -28,7 +29,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh">
       <AppHeader />
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-6xl overflow-x-hidden px-4 py-8 sm:px-6">
+        <MainTransition>{children}</MainTransition>
+      </main>
     </div>
   );
 }

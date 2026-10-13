@@ -53,7 +53,7 @@ export function SignupScreen() {
     <AuthFrame>
       <Form methods={methods} onSubmit={onSubmit}>
         <h2 className="text-2xl font-bold">Create your account</h2>
-        <p className={`mt-1 text-sm ${mute}`}>Tell us who you are, then choose how you will use EnvVault.</p>
+        <p className={`mt-1 text-sm ${mute}`}>Tell us who you are, then choose how you will use SecureEnv.</p>
         <div className="mt-5">
           <Field.Text name="name" label="Full name" placeholder="Jane Doe" autoComplete="name" />
           <Field.Text name="email" label="Email" type="email" placeholder="you@company.com" autoComplete="email" autoCapitalize="none" />
@@ -71,7 +71,7 @@ export function SignupScreen() {
       </Form>
       <p className={`mt-4 text-sm ${mute}`}>
         Already have an account?{" "}
-        <Link href="/" className="font-semibold text-brand-700 dark:text-brand-500">
+        <Link href="/login" className="font-semibold text-brand-700 dark:text-brand-500">
           Sign in
         </Link>
       </p>

@@ -15,10 +15,13 @@ export const customFetchBaseQuery = (): BaseQueryFn<string | FetchArgs, unknown,
 
   return async (args, api, extraOptions) => {
     const result = await baseQuery(args, api, extraOptions);
-    if (result.error?.status === 401 && window.location.pathname !== "/") {
+    const path = window.location.pathname;
+    const onAuth =
+      path === "/login" || path === "/signup" || path.startsWith("/forgot");
+    if (result.error?.status === 401 && !onAuth) {
       api.dispatch(logout());
       api.dispatch(resetStore());
-      window.location.replace("/");
+      window.location.replace("/login");
     }
     return result;
   };

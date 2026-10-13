@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserPhoto } from "@/components/brand/avatar";
-import { LogoMark, SignOutIcon, UserIcon } from "@/components/brand/icons";
+import { SignOutIcon, UserIcon } from "@/components/brand/icons";
+import { BrandLogo } from "@/components/brand/logo";
 import { RoleChip } from "@/components/brand/role-chip";
 import { homePath } from "@/lib/permissions";
 import { mute } from "@/lib/styles";
@@ -46,15 +47,14 @@ export function AppHeader() {
   if (!me) return null;
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-white/80 backdrop-blur dark:border-ink-700 dark:bg-ink-950/80">
+    <header className="sticky top-0 z-20 border-b border-line bg-white/80 pt-2 backdrop-blur dark:border-ink-700 dark:bg-ink-950/80">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
         <button
           type="button"
-          className="flex min-w-0 items-center gap-2 font-bold"
+          className="min-w-0"
           onClick={() => router.push(homePath(me.role))}
         >
-          <LogoMark className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" strokeWidth={2.4} />
-          <span className="truncate">EnvVault</span>
+          <BrandLogo markClassName="h-7 w-7" wordmarkClassName="h-[18px]" />
         </button>
         <div className="flex shrink-0 items-center gap-2 text-sm">
           {me.role === "admin" ? null : (
@@ -106,7 +106,7 @@ export function AppHeader() {
                     dispatch(clearSession());
                     dispatch(resetStore());
                     logout();
-                    router.replace("/");
+                    router.replace("/login");
                   }}
                 >
                   <SignOutIcon />

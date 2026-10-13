@@ -21,11 +21,15 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "EnvVault",
-    template: "%s - EnvVault",
+    default: "SecureEnv",
+    template: "%s - SecureEnv",
   },
   description:
     "Project managers set up workspaces, devs join by invite, and everyone shares the same env files.",
+  icons: {
+    icon: "/assets/logo.png",
+    apple: "/assets/logo.png",
+  },
 };
 
 export const viewport: Viewport = {

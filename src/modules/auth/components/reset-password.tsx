@@ -58,7 +58,7 @@ export function ResetPassword() {
       setLeaving(true);
       clearResetChallenge();
       showSuccess("Password updated. Sign in with the new one.");
-      router.replace("/");
+      router.replace("/login");
     } catch (error) {
       showError(getErrorMessage(error));
     }
@@ -93,7 +93,7 @@ export function ResetPassword() {
           {methods.formState.isSubmitting ? "Updating…" : "Update password"}
         </button>
       </Form>
-      <Link href="/" className={`mt-4 block text-sm font-medium ${mute}`}>
+      <Link href="/login" className={`mt-4 block text-sm font-medium ${mute}`}>
         Back to sign in
       </Link>
     </AuthFrame>

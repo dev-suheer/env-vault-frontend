@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { LogoMark } from "@/components/brand/icons";
+import Link from "next/link";
+import { BrandLogo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/modules/theme/components/theme-toggle";
 
 export const authField =
@@ -13,10 +14,9 @@ export function AuthFrame({ children }: { children: ReactNode }) {
   return (
     <section className="grid min-h-dvh lg:grid-cols-2">
       <div className="hidden flex-col bg-slate-900 p-12 text-white lg:flex dark:border-r dark:border-ink-700 dark:bg-ink-900">
-        <div className="flex items-center gap-2 text-lg font-bold">
-          <LogoMark />
-          EnvVault
-        </div>
+        <Link href="/" className="w-fit">
+          <BrandLogo variant="dark" markClassName="h-9 w-9" wordmarkClassName="h-6" />
+        </Link>
         <div className="flex flex-1 flex-col justify-center">
           <h1 className="max-w-md text-4xl font-extrabold leading-tight">Your repo can be recloned. Your .env can&apos;t.</h1>
           <p className="mt-4 max-w-md text-slate-400">
@@ -45,10 +45,9 @@ export function AuthFrame({ children }: { children: ReactNode }) {
       <div className="relative flex items-center justify-center overflow-y-auto p-6">
         <ThemeToggle className="absolute top-4 right-4" />
         <div className="w-full max-w-sm py-10">
-          <div className="mb-6 flex items-center gap-2 text-lg font-bold lg:hidden">
-            <LogoMark />
-            EnvVault
-          </div>
+          <Link href="/" className="mb-6 w-fit lg:hidden">
+            <BrandLogo markClassName="h-8 w-8" wordmarkClassName="h-5" />
+          </Link>
           {children}
         </div>
       </div>

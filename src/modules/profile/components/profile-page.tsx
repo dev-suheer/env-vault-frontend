@@ -14,10 +14,10 @@ export function ProfilePage() {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("details");
 
   return (
-    <div className="fade">
+    <div className="fade max-w-3xl">
       <h1 className="text-2xl font-extrabold">Profile</h1>
       <p className={`mt-1 text-sm ${mute}`}>
-        Update your photo, name, and phone, or change your password. Email and
+        Update your name and phone, or change your password. Email and
         role cannot be changed.
       </p>
       <div className="tab-scroll mt-6 flex gap-1 border-b border-line text-sm font-semibold dark:border-ink-700">

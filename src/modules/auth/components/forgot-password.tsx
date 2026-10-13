@@ -78,7 +78,7 @@ export function ForgotPassword() {
           Continue with the code already sent
         </Link>
       ) : null}
-      <Link href="/" className={`mt-4 block text-sm font-medium ${mute}`}>
+      <Link href="/login" className={`mt-4 block text-sm font-medium ${mute}`}>
         Back to sign in
       </Link>
     </AuthFrame>
